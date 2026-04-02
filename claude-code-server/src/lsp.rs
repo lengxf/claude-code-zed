@@ -343,20 +343,76 @@ impl LanguageServer for ClaudeCodeLanguageServer {
         )
         .await;
 
-        let actions = vec![CodeActionOrCommand::CodeAction(CodeAction {
-            title: "Explain with Claude".to_string(),
-            kind: Some(CodeActionKind::REFACTOR),
-            diagnostics: None,
-            edit: None,
-            command: None,
-            is_preferred: Some(false),
-            disabled: None,
-            data: Some(serde_json::json!({
-                "action": "explain",
-                "uri": params.text_document.uri,
-                "range": params.range
-            })),
-        })];
+        // Build relative file path (strip worktree prefix)
+        let abs_path = params.text_document.uri.path().to_string();
+        let relative_path = if let Some(worktree) = &self.worktree {
+            let prefix = worktree.to_string_lossy();
+            abs_path
+                .strip_prefix(prefix.as_ref())
+                .unwrap_or(&abs_path)
+                .trim_start_matches('/')
+                .to_string()
+        } else {
+            abs_path.clone()
+        };
+
+        // Determine line range (1-indexed) based on selection
+        let has_selection = params.range.start != params.range.end;
+        let (line_start, line_end) = if has_selection {
+            let start = params.range.start.line + 1;
+            // When selection ends at column 0 of a line, the actual selected content
+            // ends at the previous line (e.g., selecting lines 5-10 may give end={line:10, char:0})
+            let end = if params.range.end.character == 0 && params.range.end.line > params.range.start.line {
+                params.range.end.line
+            } else {
+                params.range.end.line + 1
+            };
+            (start, end)
+        } else {
+            (0u32, 0u32)
+        };
+
+        // Build display title
+        let at_mention_title = if has_selection {
+            format!(
+                "Send @{}#L{}-{} to Claude Code",
+                relative_path, line_start, line_end
+            )
+        } else {
+            format!("Send @{} to Claude Code", relative_path)
+        };
+
+        let actions = vec![
+            CodeActionOrCommand::CodeAction(CodeAction {
+                title: at_mention_title.clone(),
+                kind: Some(CodeActionKind::new("source.claude.at-mention")),
+                command: Some(Command {
+                    title: at_mention_title,
+                    command: "claude-code.at-mention".to_string(),
+                    arguments: Some(vec![serde_json::json!({
+                        "filePath": relative_path,
+                        "lineStart": line_start,
+                        "lineEnd": line_end,
+                    })]),
+                }),
+                is_preferred: Some(true),
+                ..Default::default()
+            }),
+            CodeActionOrCommand::CodeAction(CodeAction {
+                title: "Explain with Claude".to_string(),
+                kind: Some(CodeActionKind::REFACTOR),
+                diagnostics: None,
+                edit: None,
+                command: None,
+                is_preferred: Some(false),
+                disabled: None,
+                data: Some(serde_json::json!({
+                    "action": "explain",
+                    "uri": params.text_document.uri,
+                    "range": params.range
+                })),
+            }),
+        ];
 
         Ok(Some(actions))
     }
@@ -425,13 +481,16 @@ impl LanguageServer for ClaudeCodeLanguageServer {
                         )
                         .await;
 
+                        let display = if line_start > 0 && line_end > 0 {
+                            format!("@{}#L{}-{}", file_path, line_start, line_end)
+                        } else {
+                            format!("@{}", file_path)
+                        };
+
                         self.client
                             .show_message(
                                 MessageType::INFO,
-                                format!(
-                                    "At-mention sent for {}:{}-{}",
-                                    file_path, line_start, line_end
-                                ),
+                                format!("Sent {} to Claude Code", display),
                             )
                             .await;
                     }

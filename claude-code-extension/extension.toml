@@ -28,6 +28,8 @@ languages = [
     "Elixir",
     "Erlang",
     "Kotlin",
+    "Java",
+    "Go",
 ]
 
 [language_servers.claude-code-server.language_ids]
@@ -43,3 +45,5 @@ languages = [
 "Elixir" = "elixir"
 "Erlang" = "erlang"
 "Kotlin" = "kotlin"
+"Java" = "java"
+"Go" = "go"
