@@ -392,37 +392,21 @@ impl LanguageServer for ClaudeCodeLanguageServer {
             format!("@{}", relative_path)
         };
 
-        let actions = vec![
-            CodeActionOrCommand::CodeAction(CodeAction {
-                title: at_mention_title.clone(),
-                kind: Some(CodeActionKind::new("source.claude.at-mention")),
-                command: Some(Command {
-                    title: at_mention_title,
-                    command: "claude-code.at-mention".to_string(),
-                    arguments: Some(vec![serde_json::json!({
-                        "filePath": relative_path,
-                        "lineStart": line_start,
-                        "lineEnd": line_end,
-                    })]),
-                }),
-                is_preferred: Some(true),
-                ..Default::default()
+        let actions = vec![CodeActionOrCommand::CodeAction(CodeAction {
+            title: at_mention_title.clone(),
+            kind: Some(CodeActionKind::new("source.claude.at-mention")),
+            command: Some(Command {
+                title: at_mention_title,
+                command: "claude-code.at-mention".to_string(),
+                arguments: Some(vec![serde_json::json!({
+                    "filePath": relative_path,
+                    "lineStart": line_start,
+                    "lineEnd": line_end,
+                })]),
             }),
-            CodeActionOrCommand::CodeAction(CodeAction {
-                title: "Explain with Claude".to_string(),
-                kind: Some(CodeActionKind::REFACTOR),
-                diagnostics: None,
-                edit: None,
-                command: None,
-                is_preferred: Some(false),
-                disabled: None,
-                data: Some(serde_json::json!({
-                    "action": "explain",
-                    "uri": params.text_document.uri,
-                    "range": params.range
-                })),
-            }),
-        ];
+            is_preferred: Some(true),
+            ..Default::default()
+        })];
 
         Ok(Some(actions))
     }
