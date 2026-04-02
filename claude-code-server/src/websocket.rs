@@ -252,8 +252,6 @@ async fn handle_websocket_connection(
             } => {
                 match notification {
                     Ok(notification) => {
-                        debug!("Received IDE notification: {:?}", notification);
-
                         // Forward the notification to the MCP client
                         let notification_json = serde_json::to_string(&notification)?;
                         if let Err(e) = ws_sender.send(Message::Text(notification_json)).await {

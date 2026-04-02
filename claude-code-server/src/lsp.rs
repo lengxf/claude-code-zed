@@ -33,10 +33,10 @@ pub struct SelectionInfo {
 pub struct AtMentionedNotification {
     #[serde(rename = "filePath")]
     pub file_path: String,
-    #[serde(rename = "lineStart")]
-    pub line_start: u32,
-    #[serde(rename = "lineEnd")]
-    pub line_end: u32,
+    #[serde(rename = "lineStart", skip_serializing_if = "Option::is_none")]
+    pub line_start: Option<u32>,
+    #[serde(rename = "lineEnd", skip_serializing_if = "Option::is_none")]
+    pub line_end: Option<u32>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -322,14 +322,27 @@ impl LanguageServer for ClaudeCodeLanguageServer {
         // Send selection_changed notification when code action is requested
         let selected_text =
             self.read_text_from_range(params.text_document.uri.path(), params.range);
+        // Zed may provide a synthetic one-character range for cursor-only code actions.
+        // Treat only multi-character or multi-line ranges as real selections.
+        let has_selection = !selected_text.is_empty()
+            && (params.range.start.line != params.range.end.line
+                || params.range.start.character.abs_diff(params.range.end.character) > 1);
         let selection_notification = SelectionChangedNotification {
-            text: selected_text,
+            text: if has_selection {
+                selected_text
+            } else {
+                String::new()
+            },
             file_path: params.text_document.uri.path().to_string(),
             file_url: params.text_document.uri.to_string(),
             selection: SelectionInfo {
                 start: params.range.start,
-                end: params.range.end,
-                is_empty: params.range.start == params.range.end,
+                end: if has_selection {
+                    params.range.end
+                } else {
+                    params.range.start
+                },
+                is_empty: !has_selection,
             },
         };
 
@@ -337,11 +350,13 @@ impl LanguageServer for ClaudeCodeLanguageServer {
             "Sending selection_changed notification for range: {:?}",
             params.range
         );
-        self.send_notification(
-            "selection_changed",
-            serde_json::to_value(selection_notification).unwrap(),
-        )
-        .await;
+        if has_selection {
+            self.send_notification(
+                "selection_changed",
+                serde_json::to_value(selection_notification).unwrap(),
+            )
+            .await;
+        }
 
         // Build relative file path (strip worktree prefix)
         let abs_path = params.text_document.uri.path().to_string();
@@ -356,8 +371,6 @@ impl LanguageServer for ClaudeCodeLanguageServer {
             abs_path.clone()
         };
 
-        // Determine line range (1-indexed) based on selection
-        let has_selection = params.range.start != params.range.end;
         let (line_start, line_end) = if has_selection {
             let start = params.range.start.line + 1;
             // When selection ends at column 0 of a line, the actual selected content
@@ -372,14 +385,11 @@ impl LanguageServer for ClaudeCodeLanguageServer {
             (0u32, 0u32)
         };
 
-        // Build display title
+        // Build compact display title so cmd+alt+k then Enter stays lightweight
         let at_mention_title = if has_selection {
-            format!(
-                "Send @{}#L{}-{} to Claude Code",
-                relative_path, line_start, line_end
-            )
+            format!("@{}#L{}-{}", relative_path, line_start, line_end)
         } else {
-            format!("Send @{} to Claude Code", relative_path)
+            format!("@{}", relative_path)
         };
 
         let actions = vec![
@@ -471,8 +481,8 @@ impl LanguageServer for ClaudeCodeLanguageServer {
 
                         let at_mention_notification = AtMentionedNotification {
                             file_path: file_path.to_string(),
-                            line_start,
-                            line_end,
+                            line_start: (line_start > 0).then_some(line_start),
+                            line_end: (line_end > 0).then_some(line_end),
                         };
 
                         self.send_notification(
@@ -538,35 +548,19 @@ impl LanguageServer for ClaudeCodeLanguageServer {
                 parent: None,
             });
 
-            // Send selection_changed notification
-            let selection_range = Range {
-                start: *position,
-                end: Position {
-                    line: position.line,
-                    character: position.character + 1,
-                },
-            };
-            let selected_text =
-                self.read_text_from_range(params.text_document.uri.path(), selection_range);
+            // Send selection_changed notification for cursor-only state
             let selection_notification = SelectionChangedNotification {
-                text: selected_text,
+                text: String::new(),
                 file_path: params.text_document.uri.path().to_string(),
                 file_url: params.text_document.uri.to_string(),
                 selection: SelectionInfo {
                     start: *position,
-                    end: Position {
-                        line: position.line,
-                        character: position.character + 1,
-                    },
+                    end: *position,
                     is_empty: true,
                 },
             };
 
-            self.send_notification(
-                "selection_changed",
-                serde_json::to_value(selection_notification).unwrap(),
-            )
-            .await;
+            let _ = selection_notification;
         }
 
         Ok(Some(ranges))

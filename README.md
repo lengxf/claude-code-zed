@@ -120,6 +120,30 @@ Once connected, you'll have:
 - **File context**: Claude can see which file you're working in
 - **Real-time updates**: Changes in your selection are immediately reflected in Claude
 
+### Send current file reference quickly
+
+You can make the Claude file-reference action as fast as possible with a Zed keybinding:
+
+1. Add this to `~/.config/zed/keymap.json`:
+   ```json
+   [
+     {
+       "context": "Editor",
+       "bindings": {
+         "cmd-alt-k": "editor::ToggleCodeActions"
+       }
+     }
+   ]
+   ```
+2. In the editor, press `cmd+alt+k`
+3. Press `Enter`
+
+The first code action is the Claude file reference, so this sends:
+- `@relative/path/to/file` when nothing is selected
+- `@relative/path/to/file#Lx-y` when a range is selected
+
+Zed currently opens the code action picker first, so the supported flow is shortcut + `Enter` rather than a single keypress.
+
 ### Verifying the Connection
 
 To confirm everything is working:
