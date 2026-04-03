@@ -71,7 +71,7 @@ impl ClaudeCodeLanguageServer {
         self
     }
 
-    async fn send_notification(&self, method: &str, params: serde_json::Value) {
+    async fn send_notification(&self, method: &str, params: serde_json::Value) -> bool {
         if let Some(sender) = &self.notification_sender {
             let notification = JsonRpcNotification {
                 jsonrpc: "2.0".to_string(),
@@ -81,8 +81,13 @@ impl ClaudeCodeLanguageServer {
 
             if let Err(e) = sender.send(notification) {
                 debug!("Failed to send notification: {}", e);
+                return false;
             }
+
+            return true;
         }
+
+        false
     }
 
     // Convert LSP UTF-16 code unit position to Rust UTF-8 byte position
@@ -469,24 +474,27 @@ impl LanguageServer for ClaudeCodeLanguageServer {
                             line_end: (line_end > 0).then_some(line_end),
                         };
 
-                        self.send_notification(
-                            "at_mentioned",
-                            serde_json::to_value(at_mention_notification).unwrap(),
-                        )
-                        .await;
-
-                        let display = if line_start > 0 && line_end > 0 {
-                            format!("@{}#L{}-{}", file_path, line_start, line_end)
-                        } else {
-                            format!("@{}", file_path)
-                        };
-
-                        self.client
-                            .show_message(
-                                MessageType::INFO,
-                                format!("Sent {} to Claude Code", display),
+                        let sent = self
+                            .send_notification(
+                                "at_mentioned",
+                                serde_json::to_value(at_mention_notification).unwrap(),
                             )
                             .await;
+
+                        if !sent {
+                            let display = if line_start > 0 && line_end > 0 {
+                                format!("@{}#L{}-{}", file_path, line_start, line_end)
+                            } else {
+                                format!("@{}", file_path)
+                            };
+
+                            self.client
+                                .show_message(
+                                    MessageType::ERROR,
+                                    format!("Failed to send {} to Claude Code", display),
+                                )
+                                .await;
+                        }
                     }
                 }
             }
