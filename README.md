@@ -59,13 +59,22 @@ A two-part system that integrates Claude Code CLI with Zed editor for AI-assiste
 
 ### Language Server Activation
 
-The Claude Code extension runs as a Language Server Protocol (LSP) server and automatically activates when you open files with the following extensions:
+The Claude Code extension runs as a Language Server Protocol (LSP) server and automatically activates when you open files for common development languages, including:
 
 - **Rust** (`.rs`)
-- **JavaScript** (`.js`)
-- **TypeScript** (`.ts`, `.tsx`)
+- **Ruby** (`.rb`)
+- **JavaScript / TypeScript / TSX** (`.js`, `.ts`, `.tsx`)
 - **Python** (`.py`)
-- **Markdown** (`.md`)
+- **Go** (`.go`)
+- **Java / Kotlin / Scala** (`.java`, `.kt`, `.scala`)
+- **C / C++ / C#** (`.c`, `.cpp`, `.cs`)
+- **PHP** (`.php`)
+- **Swift / Dart** (`.swift`, `.dart`)
+- **Shell Script / Bash / Zsh** (`.sh`, `.bash`, `.zsh`)
+- **HTML / CSS / XML / Gradle** (`.html`, `.css`, `.xml`, `.gradle`)
+- **Vue / Svelte** (`.vue`, `.svelte`)
+- **JSON / YAML / SQL** (`.json`, `.yaml`, `.yml`, `.sql`)
+- **Markdown / LaTeX / Typst** (`.md`, `.tex`, `.typ`)
 
 #### Adding Support for Other File Types
 
@@ -94,7 +103,7 @@ Once the extension is installed, follow these steps to connect Claude Code CLI w
 
 ### Connecting Claude Code to Zed
 
-1. **Open a supported file in Zed**: Create or open a file with one of the supported extensions (`.rs`, `.js`, `.ts`, `.tsx`, `.py`, `.md`)
+1. **Open a supported file in Zed**: Create or open a file in one of the supported development languages configured in `claude-code-extension/extension.toml`
 
 2. **Start Claude Code CLI**: Open your terminal and run:
    ```bash
@@ -413,7 +422,7 @@ Sometimes clearing the extension cache helps:
 **A:** Check the following:
 
 1. **Verify the extension is active**: Look for "Claude Code Server" in Zed's language server status
-2. **Check supported file types**: The extension only activates for `.rs`, `.js`, `.ts`, `.tsx`, `.py`, and `.md` files
+2. **Check supported file types**: The extension activates for the development languages listed in `claude-code-extension/extension.toml`
 3. **Restart Zed**: Sometimes a restart is needed after installation
 4. **Check logs**: Open Zed's developer console to see any error messages
 

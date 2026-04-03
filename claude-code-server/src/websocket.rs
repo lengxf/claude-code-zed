@@ -1,6 +1,7 @@
 use anyhow::{anyhow, Result};
 use dirs::home_dir;
 use futures_util::{SinkExt, StreamExt};
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::fs;
@@ -50,47 +51,22 @@ pub async fn run_websocket_server_with_notifications(
 ) -> Result<()> {
     info!("Starting WebSocket server...");
 
-    // Use fixed port or provided port, default to 59792
-    let port = port.unwrap_or(59792);
-
-    // Clean up any existing lock files for this port
-    cleanup_existing_lock_file(port).await?;
-
-    // Create new lock file
     let auth_token = Uuid::new_v4().to_string();
-    create_lock_file(port, worktree.clone(), &auth_token).await?;
 
-    // Start WebSocket server with proper error handling
-    let addr = format!("127.0.0.1:{}", port);
-
-    // Try to bind to the port, with retry logic
-    let listener = match TcpListener::bind(&addr).await {
-        Ok(listener) => {
-            info!("WebSocket server listening on {}", addr);
-            listener
-        }
-        Err(e) => {
-            error!("Failed to bind to port {}: {}", port, e);
-            info!("Attempting to force cleanup and retry...");
-
-            // Try to cleanup and retry once
-            cleanup_existing_lock_file(port).await?;
-
-            // Wait a moment for the port to be released
-            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-
-            match TcpListener::bind(&addr).await {
-                Ok(listener) => {
-                    info!("Successfully bound to port {} after cleanup", port);
-                    listener
-                }
-                Err(e2) => {
-                    error!("Failed to bind to port {} even after cleanup: {}", port, e2);
-                    return Err(anyhow!("Port {} is unavailable: {}", port, e2));
-                }
-            }
-        }
+    // Bind to a port: use provided port, or find a random available one
+    let (listener, port) = if let Some(port) = port {
+        // Explicit port requested - try to bind with cleanup retry
+        let listener = bind_to_port(port).await?;
+        (listener, port)
+    } else {
+        // No port specified - find a random available port (like VSCode does)
+        find_and_bind_random_port().await?
     };
+
+    info!("WebSocket server listening on 127.0.0.1:{}", port);
+
+    // Create lock file after successful bind
+    create_lock_file(port, worktree.clone(), &auth_token).await?;
 
     // Setup graceful shutdown handler
     let port_for_cleanup = port;
@@ -120,6 +96,43 @@ pub async fn run_websocket_server_with_notifications(
     }
 
     Ok(())
+}
+
+/// Try to bind to a specific port with cleanup retry
+async fn bind_to_port(port: u16) -> Result<TcpListener> {
+    let addr = format!("127.0.0.1:{}", port);
+    match TcpListener::bind(&addr).await {
+        Ok(listener) => Ok(listener),
+        Err(e) => {
+            warn!("Failed to bind to port {}: {}, retrying after cleanup...", port, e);
+            cleanup_existing_lock_file(port).await?;
+            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+            TcpListener::bind(&addr)
+                .await
+                .map_err(|e2| anyhow!("Port {} is unavailable: {}", port, e2))
+        }
+    }
+}
+
+/// Find a random available port and bind to it (VSCode-style)
+/// Tries up to 50 random ports in range 10000-65535
+async fn find_and_bind_random_port() -> Result<(TcpListener, u16)> {
+    // Generate all random ports upfront to avoid Send issues with ThreadRng
+    let ports: Vec<u16> = {
+        let mut rng = rand::thread_rng();
+        (0..50).map(|_| rng.gen_range(10000..=65535)).collect()
+    };
+    for (attempt, &port) in ports.iter().enumerate() {
+        let addr = format!("127.0.0.1:{}", port);
+        match TcpListener::bind(&addr).await {
+            Ok(listener) => {
+                info!("Found available port {} on attempt {}", port, attempt + 1);
+                return Ok((listener, port));
+            }
+            Err(_) => continue,
+        }
+    }
+    Err(anyhow!("Failed to find an available port after 50 attempts"))
 }
 
 async fn cleanup_existing_lock_file(port: u16) -> Result<()> {
@@ -161,7 +174,7 @@ async fn create_lock_file(port: u16, worktree: Option<PathBuf>, auth_token: &str
     let lock_file_data = LockFile {
         pid: process::id(),
         workspace_folders: vec![workspace_folder],
-        ide_name: "claude-code-server".to_string(),
+        ide_name: "Zed".to_string(),
         transport: "ws".to_string(),
         auth_token: auth_token.to_string(),
     };

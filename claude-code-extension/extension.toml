@@ -30,6 +30,25 @@ languages = [
     "Kotlin",
     "Java",
     "Go",
+    "C",
+    "C++",
+    "C#",
+    "PHP",
+    "Swift",
+    "Dart",
+    "Scala",
+    "Shell Script",
+    "Bash",
+    "Zsh",
+    "JSON",
+    "YAML",
+    "XML",
+    "Gradle",
+    "HTML",
+    "CSS",
+    "Vue.js",
+    "Svelte",
+    "SQL",
 ]
 
 [language_servers.claude-code-server.language_ids]
@@ -47,3 +66,22 @@ languages = [
 "Kotlin" = "kotlin"
 "Java" = "java"
 "Go" = "go"
+"C" = "c"
+"C++" = "cpp"
+"C#" = "csharp"
+"PHP" = "php"
+"Swift" = "swift"
+"Dart" = "dart"
+"Scala" = "scala"
+"Shell Script" = "shellscript"
+"Bash" = "bash"
+"Zsh" = "zsh"
+"JSON" = "json"
+"YAML" = "yaml"
+"XML" = "xml"
+"Gradle" = "gradle"
+"HTML" = "html"
+"CSS" = "css"
+"Vue.js" = "vue"
+"Svelte" = "svelte"
+"SQL" = "sql"
