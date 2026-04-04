@@ -51,6 +51,9 @@ pub async fn run_websocket_server_with_notifications(
 ) -> Result<()> {
     info!("Starting WebSocket server...");
 
+    // Clean up stale lock files from dead processes
+    cleanup_stale_lock_files().await;
+
     let auth_token = Uuid::new_v4().to_string();
 
     // Bind to a port: use provided port, or find a random available one
@@ -68,11 +71,24 @@ pub async fn run_websocket_server_with_notifications(
     // Create lock file after successful bind
     create_lock_file(port, worktree.clone(), &auth_token).await?;
 
-    // Setup graceful shutdown handler
+    // Setup graceful shutdown handler for both SIGINT (ctrl_c) and SIGTERM
     let port_for_cleanup = port;
     tokio::spawn(async move {
-        tokio::signal::ctrl_c().await.ok();
-        info!("Shutdown signal received, cleaning up...");
+        #[cfg(unix)]
+        {
+            use tokio::signal::unix::{signal, SignalKind};
+            let mut sigterm = signal(SignalKind::terminate()).expect("failed to register SIGTERM");
+            let mut sigint = signal(SignalKind::interrupt()).expect("failed to register SIGINT");
+            tokio::select! {
+                _ = sigterm.recv() => info!("SIGTERM received, cleaning up..."),
+                _ = sigint.recv() => info!("SIGINT received, cleaning up..."),
+            }
+        }
+        #[cfg(not(unix))]
+        {
+            tokio::signal::ctrl_c().await.ok();
+            info!("Shutdown signal received, cleaning up...");
+        }
         if let Err(e) = cleanup_existing_lock_file(port_for_cleanup).await {
             error!("Error during cleanup: {}", e);
         }
@@ -133,6 +149,49 @@ async fn find_and_bind_random_port() -> Result<(TcpListener, u16)> {
         }
     }
     Err(anyhow!("Failed to find an available port after 50 attempts"))
+}
+
+/// Clean up stale lock files where the PID is no longer running
+async fn cleanup_stale_lock_files() {
+    let home = match home_dir() {
+        Some(h) => h,
+        None => return,
+    };
+    let claude_dir = home.join(".claude").join("ide");
+    if !claude_dir.exists() {
+        return;
+    }
+
+    let entries = match fs::read_dir(&claude_dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("lock") {
+            continue;
+        }
+        let content = match fs::read_to_string(&path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let lock: LockFile = match serde_json::from_str(&content) {
+            Ok(l) => l,
+            Err(_) => continue,
+        };
+
+        // Check if the process is still alive
+        #[cfg(unix)]
+        let alive = unsafe { libc::kill(lock.pid as i32, 0) } == 0;
+        #[cfg(not(unix))]
+        let alive = true;
+
+        if !alive {
+            info!("Removing stale lock file: {} (pid {} not running)", path.display(), lock.pid);
+            let _ = fs::remove_file(&path);
+        }
+    }
 }
 
 async fn cleanup_existing_lock_file(port: u16) -> Result<()> {
